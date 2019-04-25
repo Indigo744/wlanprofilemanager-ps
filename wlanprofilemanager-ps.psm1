@@ -69,7 +69,7 @@ Function LogTranscriptGetFilename() {
 Function LogTranscriptCleanOld() {
     # Delete log file older than X hours
     $limit = (Get-Date).AddHours((-1 * $Script:LOG_HOURS_TO_KEEP))
-    Get-ChildItem $script:LOG_PATH | Where-Object {
+    Get-ChildItem (Join-Path $script:LOG_PATH "*.log") | Where-Object {
         -not $_.PSIsContainer -and $_.CreationTime -lt $limit
     } | Remove-Item
 }
@@ -219,6 +219,23 @@ Function ConfigProfilesAvailable() {
 #>
 Function ConfigProfilesRead() {
     return Import-LocalizedData -BaseDirectory $PSScriptRoot -FileName $script:PROFILES_FILENAME
+}
+
+<#
+.SYNOPSIS
+    Auto detect and get the first WLAN interface of this computer
+    
+.INPUTS
+    None
+    
+.OUTPUTS
+    Microsoft.Management.Infrastructure.CimInstance
+    Microsoft.Management.Infrastructure.CimInstance#ROOT/StandardCimv2/MSFT_NetAdapter
+#>
+Function ItfAutoDetectWLAN() {
+    return Get-NetAdapter |
+        Where-Object { ($_.PhysicalMediaType -eq 'Native 802.11') -or ($_.PhysicalMediaType -eq 'Wireless LAN') -or ($_.PhysicalMediaType -eq 'Wireless WAN') } | 
+        Select-Object -first 1
 }
 
 <#

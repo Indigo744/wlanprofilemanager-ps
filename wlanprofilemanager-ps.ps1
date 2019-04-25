@@ -25,6 +25,12 @@
   Log file stored in .\logs
 
 .NOTES
+  Version:        1.1
+  Author:         Indigo744
+  Creation Date:  25 april 2019
+  Purpose/Change: Better wlan interface detection
+                  Log file cleaning only *.log file
+
   Version:        1.0
   Author:         Indigo744
   Creation Date:  24 april 2019
@@ -60,15 +66,20 @@ Write-Host "Reading configuration in $PROFILES_FILENAME..."
 $config = ConfigProfilesRead
 Write-Host " > Found $($config.Count) profiles: $($config.Keys -join ', ')"
 
-# Get network config
-Write-Host "Checking current connection..."
-$netconnectionProfile = Get-NetConnectionProfile
-$currentSSID = GetCurrentSSID
-$currentItfAlias = $netconnectionProfile.InterfaceAlias
-$currentItfIndex = $netconnectionProfile.InterfaceIndex
+# Get WLAN adapter
+Write-Host "Checking current wlan connection..."
+$wlanAdapter = ItfAutoDetectWLAN
+if (!($wlanAdapter)) {
+    Write-Error "No wlan interface found, aborting"
+    Exit
+}
+$currentItfAlias = $wlanAdapter.InterfaceAlias
+$currentItfIndex = $wlanAdapter.InterfaceIndex
 
-if (($currentSSID -eq "") -or ($currentNetworkAlias -eq "")) {
-    Write-Error "No connected SSID or alias, aborting"
+# Get current SSID
+$currentSSID = GetCurrentSSID
+if (!($currentSSID)) {
+    Write-Error "No SSID found, aborting"
     Exit
 }
 
