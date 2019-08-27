@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
   Automatically switch wlan profiles
-  
+
 .DESCRIPTION
   This script allows you to automatically switch wlan profiles depending on the SSID connected to.
 
@@ -13,9 +13,9 @@
 
   This script should be run when the computer connects to a wifi access point.
   The easiest way to do this is to add a scheduled task to trigger at wlan connection.
-  
+
   This script needs to be run as administrator to be able to modify IP configuration.
-  
+
   See README.md file for more information on how to install the script on your computer.
 
 .INPUTS
@@ -25,6 +25,14 @@
   Log file stored in .\logs
 
 .NOTES
+  Version:        1.2
+  Author:         Indigo744
+  Creation Date:  27 august 2019
+  Purpose/Change: Better DNS IP handling in case of errors
+                  Verify configuration at script startup
+                  Added non-zero exit code for error
+                  Added global catch block
+
   Version:        1.1
   Author:         Indigo744
   Creation Date:  25 april 2019
@@ -47,18 +55,18 @@ $AUTO_VALUE = "auto"
 Import-Module "./wlanprofilemanager-ps.psm1" -Force
 
 #-----------------------------------------------------------[Execution]------------------------------------------------------------
- 
+
 # Start transcripts
 LogTranscriptStart
 
 # Check lock file
 if (LockFileExists) {
-    Exit
+    Exit 1
 }
 
 # Check config file
 if (!(ConfigProfilesAvailable)) {
-    Exit
+    Exit 2
 }
 
 # Read config file
@@ -66,12 +74,17 @@ Write-Host "Reading configuration in $PROFILES_FILENAME..."
 $config = ConfigProfilesRead
 Write-Host " > Found $($config.Count) profiles: $($config.Keys -join ', ')"
 
+# Verify config profiles
+if (!(ConfigProfilesVerify $config)) {
+    Exit 3
+}
+
 # Get WLAN adapter
 Write-Host "Checking current wlan connection..."
 $wlanAdapter = ItfAutoDetectWLAN
 if (!($wlanAdapter)) {
     Write-Error "No wlan interface found, aborting"
-    Exit
+    Exit 4
 }
 $currentItfAlias = $wlanAdapter.InterfaceAlias
 $currentItfIndex = $wlanAdapter.InterfaceIndex
@@ -80,7 +93,7 @@ $currentItfIndex = $wlanAdapter.InterfaceIndex
 $currentSSID = GetCurrentSSID
 if (!($currentSSID)) {
     Write-Error "No SSID found, aborting"
-    Exit
+    Exit 5
 }
 
 Write-Host " > Found interface $currentItfAlias ($currentItfIndex) connected on SSID $currentSSID"
@@ -98,7 +111,7 @@ if ($config.ContainsKey($currentSSID)) {
     $newProfile = $config[$DEFAULT_PROFILE]
 } else {
     Write-Error "No corresponding profile nor default profile found, aborting"
-    Exit
+    Exit 0
 }
 
 $netIpInterface = Get-NetIPInterface -InterfaceIndex $currentItfIndex
@@ -125,20 +138,19 @@ try {
             # Reset conf after enabling DHCP
             Write-Host " > Reset conf"
             ItfResetIpConf($currentItfIndex)
-    
+
             $need_restart = $true
             $has_changed = $true
         }
     } else {
         # Set a static IP address
-        # First: cast all string to IPAddress to check proper formatting
         $ipAdress = [IPAddress]$newProfile.ip
         $ipAdressGw = [IPAddress]$newProfile.gateway
         $prefixLength = ComputePrefixLengthFromMaskSubnet($newProfile.mask)
 
-        if (($ipAdress -eq $netIPConfiguration.IPv4Address.IPv4Address) -and 
+        if (($ipAdress -eq $netIPConfiguration.IPv4Address.IPv4Address) -and
             ($ipAdressGw -eq $netIPConfiguration.IPv4DefaultGateway.NextHop) -and
-            ($prefixLength -eq $netIPAddress.PrefixLength)) 
+            ($prefixLength -eq $netIPAddress.PrefixLength))
         {
             Write-Host " > Conf already set, nothing to do..."
         } else {
@@ -146,10 +158,12 @@ try {
             Write-Host " > Reset conf"
             ItfResetIpConf($currentItfIndex)
             # Set Conf
-            Write-Host " > Set $ipAdress/$prefixLength (gw $ipAdressGw)"
+            Write-Host " > Disable DHCP"
             Set-NetIPInterface -InterfaceIndex $currentItfIndex -Dhcp Disabled
+            Write-Host " > Set $ipAdress/$prefixLength (gw $ipAdressGw)"
             New-NetIPAddress –InterfaceIndex $currentItfIndex -AddressFamily IPv4 -IPAddress $ipAdress –PrefixLength $prefixLength -DefaultGateway $ipAdressGw | out-null
-            
+            Write-Host " > Done"
+
             $need_restart = $true
             $has_changed = $true
         }
@@ -163,22 +177,30 @@ try {
             # Reset DNS on interface, nothing more to do
             Write-Host " > Set automatic DNS"
             Set-DnsClientServerAddress -InterfaceIndex $currentItfIndex -ResetServerAddresses
-            
+            Write-Host " > Done"
+
             $has_changed = $true
         }
     } else {
         # Set static DNS IP addresses
-        # First: cast all string to IPAddress to check proper formatting
         $ipAdressDns = [IPAddress]$newProfile.dns
         $ipAdressDnsAlt = [IPAddress]$newProfile.dns_alternate
-        if (($ipAdressDns -eq $netIPConfiguration.DNSServer.ServerAddresses[0]) -and 
-            ($ipAdressDnsAlt -eq $netIPConfiguration.DNSServer.ServerAddresses[1]))
+
+        # Try to get current DNS IP configuration
+        try { $currentIpAdressDns = $netIPConfiguration.DNSServer.ServerAddresses[0] }
+        catch { $currentIpAdressDns = "none" }
+
+        try { $currentIpAdressDnsAlt = $netIPConfiguration.DNSServer.ServerAddresses[1] }
+        catch { $currentIpAdressDnsAlt = "none" }
+
+        if (($ipAdressDns -eq $currentIpAdressDns) -and ($ipAdressDnsAlt -eq $currentIpAdressDnsAlt))
         {
             Write-Host " > DNS already set, nothing to do..."
         } else {
             Write-Host " > Set DNS $ipAdressDns/$ipAdressDnsAlt"
             Set-DnsClientServerAddress -InterfaceIndex $currentItfIndex -ServerAddresses ($ipAdressDns,$ipAdressDnsAlt)
-            
+            Write-Host " > Done"
+
             $has_changed = $true
         }
     }
@@ -188,24 +210,31 @@ try {
     }
 
     if ($need_restart) {
-        Write-Host " > Restarting interface..."
+        Write-Host " > Restarting interface"
         Restart-NetAdapter -Name $currentItfAlias
-    
+        Write-Host " > Done"
+
         # Wait for interface to be back up
+        Write-Host " > Waiting interface.."
         ItfWaitForUpStatus($currentItfIndex)
     }
-    
+
     if ($has_changed) {
         Start-Sleep 1
-    
+
         # Print config
-        ItfPrintIpConfig($currentItfIndex)    
+        ItfPrintIpConfig($currentItfIndex)
     }
 
     Write-Host ""
     Write-Host "Done."
-    
+
     LogTranscriptCleanOld
+}
+catch {
+    Write-host -Foreground Red     -Background Black  "Fatal exception during script:"
+    Write-Host -Foreground DarkRed -Background Black  $_
+    Exit 666
 }
 finally {
     # Remove lock file
@@ -216,3 +245,5 @@ finally {
     # Stop transcript
     LogTranscriptStop
 }
+
+Exit 0

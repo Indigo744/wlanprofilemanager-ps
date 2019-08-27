@@ -22,7 +22,7 @@ Set-Variable currentLogFile -Scope Script -Force -value $null
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -48,7 +48,7 @@ Function LogTranscriptStart() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [string] log filename
 #>
@@ -62,7 +62,7 @@ Function LogTranscriptGetFilename() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -80,7 +80,7 @@ Function LogTranscriptCleanOld() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -97,7 +97,7 @@ Function LogTranscriptStop() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [bool] $true if exists, $false otherwise
 #>
@@ -120,12 +120,12 @@ Function LockFileExists() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
 Function LockFileCreate() {
-    "locked" | Out-File $script:LOCK_FILEPATH 
+    "locked" | Out-File $script:LOCK_FILEPATH
 }
 
 <#
@@ -134,7 +134,7 @@ Function LockFileCreate() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -149,12 +149,12 @@ Function LockFileRemove() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
 Function NotifyFileSet($content) {
-    $content | Out-File $script:NOTIFY_FILEPATH 
+    $content | Out-File $script:NOTIFY_FILEPATH
 }
 
 <#
@@ -164,7 +164,7 @@ Function NotifyFileSet($content) {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [string] file content
 #>
@@ -181,7 +181,7 @@ Function NotifyFileGet() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -195,7 +195,7 @@ Function NotifyFileRemove() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [bool] $true if available, $false otherwise
 #>
@@ -213,7 +213,7 @@ Function ConfigProfilesAvailable() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [array] Array of profiles
 #>
@@ -223,18 +223,68 @@ Function ConfigProfilesRead() {
 
 <#
 .SYNOPSIS
+    Verify the config profiles
+
+.INPUTS
+    [object] Config object
+
+.OUTPUTS
+    [bool] $true if good, $false otherwise
+#>
+Function ConfigProfilesVerify($configProfiles) {
+
+    foreach ($profileKey in $configProfiles.Keys) {
+        foreach ($paramKey in $configProfiles[$profileKey].Keys) {
+            $value = $configProfiles[$profileKey][$paramKey]
+            if ($value -ne "auto")
+            {
+                try {
+                    # If param not auto, then it should be a valid IP address
+                    # This dummy cast will throw an exception in case of invalid IP
+                    $value = [IPAddress]$value
+                }
+                catch {
+                    Write-Error "Error in profile ${profileKey}: Invalid value `"$value`" set for `"$paramKey`""
+                    return $false
+                }
+            }
+        }
+
+        # Check if IP or not mask or gateway is DHCP and not the others
+        if ((($configProfiles[$profileKey].ip -eq "auto") -or ($configProfiles[$profileKey].mask -eq "auto") -or ($configProfiles[$profileKey].gateway -eq "auto")) -and
+            (($configProfiles[$profileKey].ip -ne "auto") -or ($configProfiles[$profileKey].mask -ne "auto") -or ($configProfiles[$profileKey].gateway -ne "auto")))
+        {
+            Write-Error "Error in profile ${profileKey}: ip, mask and gateway must be set to DHCP together"
+            return $false
+        }
+
+        # Check if DNS or alternative DNS is DHCP and not the other
+        if ((($configProfiles[$profileKey].dns -eq "auto") -and ($configProfiles[$profileKey].dns_alternate -ne "auto")) -or
+            (($configProfiles[$profileKey].dns -ne "auto") -and ($configProfiles[$profileKey].dns_alternate -eq "auto")))
+        {
+            Write-Error "Error in profile ${profileKey}: dns and dns_alternate must be set to DHCP together"
+            return $false
+        }
+
+    }
+
+    return $true
+}
+
+<#
+.SYNOPSIS
     Auto detect and get the first WLAN interface of this computer
-    
+
 .INPUTS
     None
-    
+
 .OUTPUTS
     Microsoft.Management.Infrastructure.CimInstance
     Microsoft.Management.Infrastructure.CimInstance#ROOT/StandardCimv2/MSFT_NetAdapter
 #>
 Function ItfAutoDetectWLAN() {
     return Get-NetAdapter |
-        Where-Object { ($_.PhysicalMediaType -eq 'Native 802.11') -or ($_.PhysicalMediaType -eq 'Wireless LAN') -or ($_.PhysicalMediaType -eq 'Wireless WAN') } | 
+        Where-Object { ($_.PhysicalMediaType -eq 'Native 802.11') -or ($_.PhysicalMediaType -eq 'Wireless LAN') -or ($_.PhysicalMediaType -eq 'Wireless WAN') } |
         Select-Object -first 1
 }
 
@@ -247,7 +297,7 @@ Function ItfAutoDetectWLAN() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -268,7 +318,7 @@ Function ItfPrintIpConfig($itf_index) {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -296,7 +346,7 @@ Function ItfWaitForUpStatus($itf_index, $timeout_s = $false) {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     None
 #>
@@ -316,7 +366,7 @@ Function ItfResetIpConf($itf_index) {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [bool] $true if auto, $false otherwise
 #>
@@ -338,7 +388,7 @@ Function ItfCheckIfDnsIsAuto($itf_index) {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [string] current SSID
 #>
@@ -357,7 +407,7 @@ Function GetCurrentSSID() {
 
 .INPUTS
     None
-    
+
 .OUTPUTS
     [int] Prefix length
 #>
