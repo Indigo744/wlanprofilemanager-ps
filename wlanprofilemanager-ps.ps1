@@ -199,6 +199,8 @@ try {
         } else {
             Write-Host " > Set DNS $ipAdressDns/$ipAdressDnsAlt"
             Set-DnsClientServerAddress -InterfaceIndex $currentItfIndex -ServerAddresses ($ipAdressDns,$ipAdressDnsAlt)
+            Write-Host " > Flush DNS"
+            Clear-DnsClientCache
             Write-Host " > Done"
 
             $has_changed = $true
