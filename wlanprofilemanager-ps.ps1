@@ -25,6 +25,12 @@
   Log file stored in .\logs
 
 .NOTES
+  Version:        1.3
+  Author:         Indigo744
+  Creation Date:  15 March 2020
+  Purpose/Change: Added option "_opt_restart_itf" to choose when the script should restart interface
+                  (default is "IfNeeded", which is the same behavior as 1.2)
+
   Version:        1.2
   Author:         Indigo744
   Creation Date:  27 august 2019
@@ -73,6 +79,9 @@ if (!(ConfigProfilesAvailable)) {
 Write-Host "Reading configuration in $PROFILES_FILENAME..."
 $config = ConfigProfilesRead
 Write-Host " > Found $($config.Count) profiles: $($config.Keys -join ', ')"
+
+# Get options
+$optItfRestart = ConfigGetOptionItfRestart $config
 
 # Verify config profiles
 if (!(ConfigProfilesVerify $config)) {
@@ -211,14 +220,21 @@ try {
         InvokeNotifyTask "Applied profile $profile_applied on $currentItfAlias"
     }
 
-    if ($need_restart) {
-        Write-Host " > Restarting interface"
-        Restart-NetAdapter -Name $currentItfAlias
-        Write-Host " > Done"
+    if ($need_restart -or ($has_changed -and $optItfRestart -eq $OPT_ITFRESTART_ALWAYS)) {
+        if ($optItfRestart -ne $OPT_ITFRESTART_NEVER)
+        {
+            Write-Host " > Restarting interface"
+            Restart-NetAdapter -Name $currentItfAlias
+            Write-Host " > Done"
 
-        # Wait for interface to be back up
-        Write-Host " > Waiting interface.."
-        ItfWaitForUpStatus($currentItfIndex)
+            # Wait for interface to be back up
+            Write-Host " > Waiting interface.."
+            ItfWaitForUpStatus($currentItfIndex)
+        } else {
+            Write-Host " > Skipping restarting interface"
+        }
+    } else {
+        Write-Host " > Interface does not need to be restarted"
     }
 
     if ($has_changed) {

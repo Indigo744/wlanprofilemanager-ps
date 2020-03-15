@@ -1,4 +1,9 @@
 
+#-------------------------------------------------------[Global constants]----------------------------------------------------------
+
+Set-Variable OPT_ITFRESTART_IFNEEDED -option ReadOnly -Scope Global -Force -value "IfNeeded"
+Set-Variable OPT_ITFRESTART_ALWAYS -option ReadOnly -Scope Global -Force -value "Always"
+Set-Variable OPT_ITFRESTART_NEVER -option ReadOnly -Scope Global -Force -value "Never"
 
 #-------------------------------------------------------[Local constants]----------------------------------------------------------
 
@@ -231,44 +236,70 @@ Function ConfigProfilesRead() {
 .OUTPUTS
     [bool] $true if good, $false otherwise
 #>
-Function ConfigProfilesVerify($configProfiles) {
+Function ConfigProfilesVerify($config) {
 
-    foreach ($profileKey in $configProfiles.Keys) {
-        foreach ($paramKey in $configProfiles[$profileKey].Keys) {
-            $value = $configProfiles[$profileKey][$paramKey]
-            if ($value -ne "auto")
-            {
-                try {
-                    # If param not auto, then it should be a valid IP address
-                    # This dummy cast will throw an exception in case of invalid IP
-                    $value = [IPAddress]$value
-                }
-                catch {
-                    Write-Error "Error in profile ${profileKey}: Invalid value `"$value`" set for `"$paramKey`""
-                    return $false
+    foreach ($key in $config.Keys) {
+        if ($key.StartsWith("_opt_")) {
+            # This is an option, not a profile
+        } else {
+            foreach ($paramKey in $config[$key].Keys) {
+                $value = $config[$key][$paramKey]
+                if ($value -ne "auto")
+                {
+                    try {
+                        # If param not auto, then it should be a valid IP address
+                        # This dummy cast will throw an exception in case of invalid IP
+                        $value = [IPAddress]$value
+                    }
+                    catch {
+                        Write-Error "Error in profile ${profileKey}: Invalid value `"$value`" set for `"$paramKey`""
+                        return $false
+                    }
                 }
             }
-        }
 
-        # Check if IP or not mask or gateway is DHCP and not the others
-        if ((($configProfiles[$profileKey].ip -eq "auto") -or ($configProfiles[$profileKey].mask -eq "auto") -or ($configProfiles[$profileKey].gateway -eq "auto")) -and
-            (($configProfiles[$profileKey].ip -ne "auto") -or ($configProfiles[$profileKey].mask -ne "auto") -or ($configProfiles[$profileKey].gateway -ne "auto")))
-        {
-            Write-Error "Error in profile ${profileKey}: ip, mask and gateway must be set to DHCP together"
-            return $false
-        }
+            # Check if IP or not mask or gateway is DHCP and not the others
+            if ((($config[$key].ip -eq "auto") -or ($config[$key].mask -eq "auto") -or ($config[$key].gateway -eq "auto")) -and
+                (($config[$key].ip -ne "auto") -or ($config[$key].mask -ne "auto") -or ($config[$key].gateway -ne "auto")))
+            {
+                Write-Error "Error in profile ${profileKey}: ip, mask and gateway must be set to DHCP together"
+                return $false
+            }
 
-        # Check if DNS or alternative DNS is DHCP and not the other
-        if ((($configProfiles[$profileKey].dns -eq "auto") -and ($configProfiles[$profileKey].dns_alternate -ne "auto")) -or
-            (($configProfiles[$profileKey].dns -ne "auto") -and ($configProfiles[$profileKey].dns_alternate -eq "auto")))
-        {
-            Write-Error "Error in profile ${profileKey}: dns and dns_alternate must be set to DHCP together"
-            return $false
-        }
+            # Check if DNS or alternative DNS is DHCP and not the other
+            if ((($config[$key].dns -eq "auto") -and ($config[$key].dns_alternate -ne "auto")) -or
+                (($config[$key].dns -ne "auto") -and ($config[$key].dns_alternate -eq "auto")))
+            {
+                Write-Error "Error in profile ${profileKey}: dns and dns_alternate must be set to DHCP together"
+                return $false
+            }
 
+        }
     }
 
     return $true
+}
+
+<#
+.SYNOPSIS
+    Retrieve the option _opt_restart_itf from configuration file
+
+.INPUTS
+    [object] Config object
+
+.OUTPUTS
+    [string] the value
+#>
+Function ConfigGetOptionItfRestart($config) {
+    if ($config.ContainsKey("_opt_restart_itf")) {
+        if ($config["_opt_restart_itf"] -in @($OPT_ITFRESTART_IFNEEDED, $OPT_ITFRESTART_ALWAYS, $OPT_ITFRESTART_NEVER)) {
+            return $config["_opt_restart_itf"]
+        } else {
+            Write-Error "Wrong value for _opt_restart_itf: ${config["_opt_restart_itf"]}"
+        }
+    }
+
+    return $OPT_ITFRESTART_IFNEEDED
 }
 
 <#

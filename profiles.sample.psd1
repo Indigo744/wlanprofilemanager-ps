@@ -1,4 +1,11 @@
 @{
+    # Option : restart interface
+    #          Set when the script should restart the interface
+    #           - IfNeeded (default): restart if DHCP config changed
+    #           - Always: always restart if something changed
+    #           - Never: never restart interface
+    _opt_restart_itf = "IfNeeded"
+
     # Default network (will be applied if no match)
     default_profile = @{
         ip = "auto"
@@ -33,7 +40,7 @@
         dns = "1.1.1.1"
         dns_alternate = "9.9.9.9"
     }
-    
+
     "WIFI_SSID_NAME_3" = @{
         # Set specific IP
         ip = "10.0.0.5"
